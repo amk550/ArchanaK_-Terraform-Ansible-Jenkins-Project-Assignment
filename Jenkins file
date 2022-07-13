@@ -1,0 +1,49 @@
+@Library('github.com/releaseworks/jenkinslib') _
+
+pipeline {
+    agent any
+    environment {
+        registry = "139471262780.dkr.ecr.us-east-1.amazonaws.com/node_application"
+    }
+    
+    stages {
+        stage('Cloning Git') {
+            steps {
+                checkout([$class: 'GitSCM', branches: [[name: '*/main']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '', url: 'https://github.com/amk550/ArchanaK_-Terraform-Ansible-Jenkins-Project-Assignment.git']]])
+            }
+        }
+    // Building Docker images
+    stage('Building image') {
+      steps{
+        script {
+          def dockerHome = tool 'docker'
+          env.PATH = "${dockerHome}/bin:${env.PATH}"
+          dockerImage = docker.build registry
+        }
+      }
+    }
+
+    // Uploading Docker images into AWS ECR
+    stage('Pushing to ECR') {
+        steps{
+            script {
+                sh 'docker login -u AWS -p $(aws ecr get-login-password --region us-east-1) 139471262780.dkr.ecr.us-east-1.amazonaws.com/node_application '
+                sh 'docker push 139471262780.dkr.ecr.us-east-1.amazonaws.com/node_application '
+            }
+        }
+    }
+
+    stage('Docker Deploy') {
+     steps{
+         script {
+             sshagent(credentials : ['node_app']){
+                sh 'ssh -o StrictHostKeyChecking=no ubuntu@10.0.102.210 "docker login -u AWS -p $(aws ecr get-login-password --region us-east-1) 139471262780.dkr.ecr.us-east-1.amazonaws.com/node_application && docker pull 139471262780.dkr.ecr.us-east-1.amazonaws.com/node_application:latest && (docker ps -f name=node -q | xargs --no-run-if-empty docker container stop) && (docker container ls -a -fname=node -q | xargs -r docker container rm) && docker run -d -p 8080:8080 --rm --name node 139471262780.dkr.ecr.us-east-1.amazonaws.com/node_application "'
+
+             }
+                
+                
+            }
+      }
+    }
+    }
+}
